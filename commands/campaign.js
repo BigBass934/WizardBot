@@ -2,7 +2,7 @@
 /* eslint-disable spaced-comment */
 /* eslint-disable no-inline-comments */
 /* eslint-disable indent */
-const { SlashCommandBuilder, EmbedBuilder, FormattingPatterns, Options } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, EmbedBuilder, FormattingPatterns, Options } = require('discord.js');
 const fs = require('fs');
 
 function createNewQuest(new_interaction) {
@@ -18,6 +18,24 @@ function createNewQuest(new_interaction) {
     const data = fs.readFileSync('campaigns.json');
     const myObject = JSON.parse(data);
 
+    const choices = [];
+    let matching_name = 0;
+    for (let i = 0; i < myObject.length; i++) {
+        const curObject = myObject[i];
+        // console.log(curObject);
+        choices.push(curObject.campaignName);
+        if (curObject.campaignName == campaign_Name) {
+            matching_name = 1;
+        }
+    }
+    if (matching_name == 1) {
+        return `ERROR: New Campaign: [ ${campaign_Name} ] creation FAILED! \n The name [ ${campaign_Name} ] is already taken by another campaign. My Library of Lore has no room for duplicates!`;
+    }
+
+    if (campaign_GM_Tag == 'WizardBot#5653') {
+        return `ERROR: New Campaign: [ ${campaign_Name} ] creation FAILED! \n I (WizardBot) cannot be made the GM of a campaign - I'm a Wizard for gods' sake! Please choose another user to be your GM.`;
+    }
+
     const newData = {
         id: myObject.length + 1,
         campaignName: campaign_Name,
@@ -27,7 +45,43 @@ function createNewQuest(new_interaction) {
         campaignGM_Username: campaign_GM_Username,
         campaignGameSystem: campaign_Game_System,
         campaignRoll20Link: campaign_Roll20_Link,
+        campaignMainTextChannels: {
+            campaignPartyQuestChannel: {
+                id: 'null',
+                name: 'null',
+            },
+            campaignPersonalQuestChannel: {
+                id: 'null',
+                name: 'null',
+            },
+            campaignCharIntrosChannel: {
+                id: 'null',
+                name: 'null',
+            },
+        },
+        campaignMainVoiceChatID: '',
+        campaignWorldInfoTextChannels: {
+            campaignMapsChannel: {
+                id: 'null',
+                name: 'null',
+            },
+            campaignGuildsFactionsChannel: {
+                id: 'null',
+                name: 'null',
+            },
+            campaignGodsDeitiesChannelID: {
+                id: 'null',
+                name: 'null',
+            },
+            campaignWorldEventsLoreChannelID: {
+                id: 'null',
+                name: 'null',
+            },
+        },
+        
     };
+
+
 
     myObject.push(newData);
 
@@ -150,11 +204,70 @@ function editCurQuest(new_interaction) {
     }
 }
 
+function setPartyQuestsChannel(new_interaction) {
+    // First, get the associated campaign and list of channels from your interaction
+    const associated_campaign = new_interaction.options.getString('associated_campaign');
+    const campaignChannelType = new_interaction.options.getString('campaign_channel_type');
+    const channel = new_interaction.options.getChannel('pq_channel_selection');
+
+    // Next, open up & Parse the campaigns JSON file
+    const data = fs.readFileSync('campaigns.json');
+    const myObject = JSON.parse(data);
+
+    let foundCampaign = 0;
+
+    for (let i = 0; i < myObject.length; i++) {
+        const curObject = myObject[i];
+        if (curObject.campaignName === associated_campaign) {
+            foundCampaign = 1; // If the current object's campaign name is the same as the one specified by the player, foundCampaign == true
+            if (campaignChannelType == 'Character Introductions') {
+                curObject.campaignMainTextChannels.campaignCharIntrosChannel.id = channel.id;
+                curObject.campaignMainTextChannels.campaignCharIntrosChannel.name = channel.name;
+            } 
+            else if (campaignChannelType == 'Gods and Deities Info') {
+                curObject.campaignMainTextChannels.campaignGodsDeitiesChannel.id = channel.id;
+                curObject.campaignMainTextChannels.campaignCGodsDeitiesChannel.name = channel.name;
+            }
+            else if (campaignChannelType == 'Maps') {
+                curObject.campaignMainTextChannels.campaignMapsChannel.id = channel.id;
+                curObject.campaignMainTextChannels.campaignMapsChannel.name = channel.name;
+            }
+            //'Maps', 'Party Quests', 'Personal Quests', 'World Events and Lore Info'
+            else if (campaignChannelType == 'Party Quests') {
+                curObject.campaignMainTextChannels.campaignPartyQuestChannel.id = channel.id;
+                curObject.campaignMainTextChannels.campaignPartyQuestChannel.name = channel.name;
+            }
+            else if (campaignChannelType == 'Personal Quests') {
+                curObject.campaignMainTextChannels.campaignPersonalQuestChannel.id = channel.id;
+                curObject.campaignMainTextChannels.campaignPersonalQuestChannel.name = channel.name;
+            }
+            else if (campaignChannelType == 'World Events and Lore Info') {
+                curObject.campaignMainTextChannels.campaignWorldEventsLoreChannel.id = channel.id;
+                curObject.campaignMainTextChannels.campaignWorldEventsLoreChannel.name = channel.name;
+            }
+        }
+    }
+    if (foundCampaign != 1) {
+        return 'Campaign Not Found!';
+    } else {
+        // Write the JSON object back to the JSON file.
+        const newData2 = JSON.stringify(myObject);
+        fs.writeFile('campaigns.json', newData2, (err) => {
+            // Error Checking
+            if (err) throw err;
+            console.log('New data added');
+        });
+        return `Successfully set #${channel.name} as the dedicated ${campaignChannelType} channel for ${associated_campaign}`;
+    }
+}
+
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('campaign')
 		.setDescription('Epic Command Suite for Campaigns - [NOTE: GM ROLE PERMISSIONS ARE REQUIRED BEFORE USING THESE]')
-		.addSubcommand(subCommand =>
+		
+        // Create Command
+        .addSubcommand(subCommand =>
 			subCommand
 				.setName('create')
 				.setDescription('Create & Register a new Campaign in the backend.')
@@ -178,10 +291,14 @@ module.exports = {
                 .addStringOption(option =>
                     option.setName('campaign_roll20_link')
                         .setDescription('This is the sharing/invite link to the campaign\'s Roll20 room.')))
+        
+        // Print Command
         .addSubcommand(subCommand =>
             subCommand
                 .setName('print')
                 .setDescription('print out something idk'))
+        
+        // Edit Command
         .addSubcommand(subCommand =>
             subCommand
                 .setName('edit')
@@ -211,6 +328,26 @@ module.exports = {
                 .addStringOption(option =>
                     option.setName('updated_campaign_roll20_link')
                         .setDescription('The updated sharing/invite link to the campaign\'s Roll20 room.')
+                        .setRequired(true)))
+        
+        // Set Party Quests Channel Command
+        .addSubcommand(subCommand =>
+            subCommand
+                .setName('set_channel')
+                .setDescription('Set channels for a specific campaign, such as a party quests channel, maps channel, etc.')
+                .addStringOption(option =>
+                    option.setName('associated_campaign')
+                        .setDescription('Which campaign do you want to set a new party quests channel for?')
+                        .setRequired(true)
+                        .setAutocomplete(true))
+                .addStringOption(option => 
+                    option.setName('campaign_channel_type')
+                        .setDescription('Which channel type are you going to be setting?')
+                        .setRequired(true)
+                        .setAutocomplete(true))
+                .addChannelOption(option =>
+                    option.setName('pq_channel_selection')
+                        .setDescription('Which channel in this server would you like to set as the [channel type here] channel?')
                         .setRequired(true))),
 
     async autocomplete(interaction) {
@@ -221,22 +358,20 @@ module.exports = {
             choices = ['CopperHorse', 'Advanced Dungeons & Dragons', 'Dungeons & Dragons 3rd Edition', 'Dungeons & Dragons v.3.5', 'Pathfinder', 'Starfinder', 'Dungeons & Dragons 4th Edition', 'Dungeons & Dragons 5th Edition', 'One D&D', 'Warhammer 40,000: Dark Heresy - 1st Edition', 'Warhammer 40,000: Dark Heresy - 2nd Edition', 'Warhammer 40,000: Rogue Trader', 'Warhammer 40,000: Deathwatch', 'Warhammer 40,000: Black Crusade', 'Warhammer 40,000: Only War', 'Warhammer 40,000: Wrath & Glory - 1st Edition', 'Warhammer 40,000: Wrath & Glory - 2nd Edition'];
         }
 
-        if (focusedOption.name === 'campaign_to_edit') {
+        if (focusedOption.name === 'campaign_to_edit' || focusedOption.name === 'associated_campaign') {
             choices = [];
             const data = fs.readFileSync('campaigns.json');
             const myObject = JSON.parse(data);
-            // console.log(myObject);
-            // for (const curObject in myObject) {
-            //     console.log(curObject);
-            //     choices.push(curObject.campaignName);
-            // }
             for (let i = 0; i < myObject.length; i++) {
                 const curObject = myObject[i];
                 // console.log(curObject);
                 choices.push(curObject.campaignName);
             }
         }
-        // console.log(choices);
+
+        if (focusedOption.name === 'campaign_channel_type') {
+            choices = ['Character Introductions', 'Gods and Deities Info', 'Maps', 'Party Quests', 'Personal Quests', 'World Events and Lore Info'];
+        }
         const filtered = choices.filter(choice => choice.startsWith(focusedOption.value));
         await interaction.respond(
             filtered.map(choice => ({ name: choice, value: choice })),
@@ -258,7 +393,15 @@ module.exports = {
         else if (interaction.options.getSubcommand() === 'edit') {
             const editReturnMsg = editCurQuest(interaction);
 
-            return interaction.reply({content: editReturnMsg, ephemeral: true });
+            return interaction.reply({ content: editReturnMsg, ephemeral: true });
+        }
+        // Campaign 'set party quests channel' Subcommand
+        else if (interaction.options.getSubcommand() === 'set_channel') {
+            // const textChanNames = interaction.guild.channels.cache.filter(chan => chan.type === ChannelType.GuildText).map(chan => chan.name).sort();
+            // console.log(textChanNames);
+            // console.log('made it to step 1!');
+            const returnMsg = setPartyQuestsChannel(interaction);
+            return interaction.reply({ content: returnMsg, ephemeral: true });
         }
 		return interaction.reply('Haha Funny Quest Time!');
 	},
